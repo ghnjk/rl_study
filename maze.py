@@ -46,8 +46,27 @@ class MazeEnv(object):
             res += s + "\n"
         return res
 
+    def get_map_state(self):
+        s = []
+        for r in range(self.row_count):
+            for c in range(self.col_count):
+                if [r, c] == self.cur_pos:
+                    s.append(0)
+                elif [r, c] == self.target_pos:
+                    s.append(1)
+                elif self.mp[r][c] == '#':
+                    s.append(2)
+                else:
+                    s.append(3)
+        return s
+
+
+
     def get_state(self):
         return (self.cur_pos[0] + 1) * (self.col_count + 2) + self.cur_pos[1] + 1
+
+    def get_state_count(self):
+        return (self.row_count + 2) * (self.col_count + 2)
 
     def get_all_actions(self):
         return ['R', 'L', 'U', 'D']
