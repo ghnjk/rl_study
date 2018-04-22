@@ -1,10 +1,10 @@
 #!/usr/bin/python
-# -*- coding: UTF-8 -*- 
+# -*- coding: UTF-8 -*-
 import random
 
-class MazeEnv(object):
 
-    def __init__(self, row_count, col_count, block_rate = 0.3):
+class MazeEnv(object):
+    def __init__(self, row_count, col_count, block_rate=0.3):
         self.row_count = row_count
         self.col_count = col_count
         self.init_pos = [random.randint(0, row_count - 1), random.randint(0, col_count - 1)]
@@ -60,15 +60,14 @@ class MazeEnv(object):
                     s.append(3)
         return s
 
-
-
     def get_state(self):
         return (self.cur_pos[0] + 1) * (self.col_count + 2) + self.cur_pos[1] + 1
 
     def get_state_count(self):
         return (self.row_count + 2) * (self.col_count + 2)
 
-    def get_all_actions(self):
+    @staticmethod
+    def get_all_actions():
         return ['R', 'L', 'U', 'D']
 
     def do_action(self, action):
@@ -97,4 +96,4 @@ class MazeEnv(object):
         else:
             reward = 0
             is_terminate = False
-        return (self.get_state(), is_terminate, reward)
+        return self.get_state(), is_terminate, reward

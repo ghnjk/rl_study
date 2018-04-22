@@ -35,7 +35,10 @@ class DeepQNetwork(object):
         self.memory_size = memory_size
         self.max_epsilon = max_epsilon
         self.epsilon_increasement = epsilon_increasement
-        self.epsilon = 0 if self.epsilon_increasement != 0 else self.max_epsilon
+        if self.epsilon_increasement > 0:
+            self.epsilon = self.max_epsilon
+        else:
+            self.epsilon = 0
         # 临时
         self.memory = deque(maxlen=self.memory_size)
         self.learn_count = 0
@@ -45,16 +48,18 @@ class DeepQNetwork(object):
         self.session = tf.Session()
         self.session.run(tf.global_variables_initializer())
         self.history_loss = []
+        self.history_q = []
 
     def choose_action(self, cur_state):
-        if np.random.uniform() < self.epsilon:
-            cur_state = cur_state
-            action_values = self.session.run(self.q_eval
-                , feed_dict = {
-                    self.cur_state : [cur_state]
-                })
-            action = np.argmax(action_values)
-        else:
+        cur_state = cur_state
+        action_values = self.session.run(self.q_eval
+                                         , feed_dict = {
+                self.cur_state : [cur_state]
+            })
+        action = np.argmax(action_values)
+        self.history_q.append(np.max(action_values))
+
+        if np.random.uniform() > self.epsilon:
             action = np.random.randint(0, self.action_cnt)
         return action
 
@@ -63,10 +68,11 @@ class DeepQNetwork(object):
             (cur_state, action, reward, next_state)
             )
 
-    def learn(self):
+    def learn(self, show_msg = True):
         if self.learn_count % self.upgrade_net_iter == 0:
             self.session.run(self.upgrade_network)
-            print "upgrade_network."
+            if show_msg:
+                print "upgrade_network."
         # random choice sample
         sample_cnt = self.batch_size if self.batch_size < len(self.memory) else len(self.memory)
         idx = random.sample(range(len(self.memory)), sample_cnt)
@@ -105,29 +111,21 @@ class DeepQNetwork(object):
         b_initializer = tf.constant_initializer(0.1)
         ## evaluate net
         with tf.variable_scope('evaluate_net'):
-            eval_l1 = tf.layers.dense(self.cur_state, 64, tf.nn.relu
+            eval_l1 = tf.layers.dense(self.cur_state, 32, tf.nn.relu
                 , kernel_initializer = w_initializer
                 , bias_initializer = b_initializer
                 , name = "eval_l1")
-            eval_l2 = tf.layers.dense(eval_l1, 16, tf.nn.relu
-                , kernel_initializer = w_initializer
-                , bias_initializer = b_initializer
-                , name = "eval_l2")
-            self.q_eval = tf.layers.dense(eval_l2, self.action_cnt
+            self.q_eval = tf.layers.dense(eval_l1, self.action_cnt #, tf.nn.tanh
                 , kernel_initializer = w_initializer
                 , bias_initializer = b_initializer
                 , name = "q_eval")
         ## target net
         with tf.variable_scope("target_net"):
-            target_l1 = tf.layers.dense(self.next_state, 64, tf.nn.relu
+            target_l1 = tf.layers.dense(self.next_state, 32, tf.nn.relu
                 , kernel_initializer = w_initializer
                 , bias_initializer = b_initializer
                 , name = "target_l1")
-            target_l2 = tf.layers.dense(target_l1, 16, tf.nn.relu
-                , kernel_initializer = w_initializer
-                , bias_initializer = b_initializer
-                , name = "target_l2")
-            self.q_target = tf.layers.dense(target_l2, self.action_cnt
+            self.q_target = tf.layers.dense(target_l1, self.action_cnt #, tf.nn.tanh
                 , kernel_initializer = w_initializer
                 , bias_initializer = b_initializer
                 , name = "q_target")
@@ -192,6 +190,7 @@ def play(env, dqn):
     is_terminate = False
     while not is_terminate:
         s = env.get_map_state()
+        s = [env.get_state()]
         act_idx = dqn.choose_action(s)
         action = env.get_all_actions()[act_idx]
         print str(env)
@@ -205,24 +204,25 @@ if __name__ == '__main__':
     # 不好搞定
     #env = MazeEnv(20, 30, block_rate = 0.25)
     #env = MazeEnv(19, 19, block_rate = 0.25)
-    env = MazeEnv(9, 9, block_rate = 0.35)
+    env = MazeEnv(9, 9, block_rate = 0.1)
     all_actions = env.get_all_actions()
     dqn = DeepQNetwork(
-        feature_cnt = env.row_count * env.col_count
+        feature_cnt = 1
         , action_cnt = len(all_actions)
-        , memory_size = 10240
-        , upgrade_net_iter = 32
-        , batch_size = 1024
-        , epsilon_increasement = 0.01
+        , memory_size = 3000
+        , upgrade_net_iter = 30
+        , batch_size = 32
+        , epsilon_increasement = 0.001
         )
     # 可视化
     logDir = "logs/dqn"
     # summaries合并
     merged = tf.summary.merge_all()
     trainWriter = tf.summary.FileWriter(logDir + '/train', dqn.session.graph)
-    for epoch in range(1000):
+    step_count = 0
+    for epoch in range(20000):
         env.reset_env()
-        cur_state = env.get_map_state()
+        cur_state = [env.get_state()]
         is_terminate = False
         data = []
         while not is_terminate:
@@ -230,16 +230,17 @@ if __name__ == '__main__':
             action = all_actions[act_idx]
             #print "action: " + str(action)
             (next_state, is_terminate, reward) = env.do_action(action)
-            next_state = env.get_map_state()
+            step_count += 1
+            next_state = [env.get_state()]
+
+            dqn.store_train(cur_state, act_idx, reward, next_state)
+            if step_count > dqn.memory_size:
+                loss = dqn.learn(False)
             data.append((cur_state, act_idx, reward, next_state))
             cur_state = next_state
-        for i in range(len(data) - 1, -1, -1):
-            cur_state, action, r, next_state= data[i]
-            """ reward / float(len(data) - i) """
-            dqn.store_train(cur_state, action, r , next_state)
-        dqn.store_train
-        loss = dqn.learn()
-        print "epoch %d loss %0.4lf reward %d" % (epoch, loss, reward)
+        if step_count > dqn.memory_size and epoch % 100 == 0:
+            print "epoch %d loss %0.4lf reward %d last_q: %0.4lf" % (epoch, loss, reward, dqn.history_q[-1])
+
     play(env, dqn)
     dqn.plot_loss()
     dqn.close()
