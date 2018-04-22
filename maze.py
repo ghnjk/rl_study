@@ -8,6 +8,7 @@ class MazeEnv(object):
         self.row_count = row_count
         self.col_count = col_count
         self.init_pos = [random.randint(0, row_count - 1), random.randint(0, col_count - 1)]
+        self.cur_pos = None
         while True:
             self.target_pos = [random.randint(0, row_count - 1), random.randint(0, col_count - 1)]
             if self.target_pos == self.init_pos:
@@ -17,7 +18,7 @@ class MazeEnv(object):
         self.mp = []
         for r in range(self.row_count):
             self.mp.append([])
-            for c in range(self.col_count):
+            for c in range(self .col_count):
                 if random.uniform(0, 1) <= block_rate:
                     s = '#'
                 else:
